@@ -1,0 +1,24 @@
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "render-vtps"
+version = "0.1.0"
+description = "ParaView pvpython tool to render VTP time-series and export animations."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "ptava", email = "tavazzipietro@gmail.com" }]
+license = {text = "MIT"}
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["render_vtps"]
+
+[project.scripts]
+render_vtps = "render_vtps.launcher:main"
+
+[tool.pyright]
+include = ["render_vtps"]
+
