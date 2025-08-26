@@ -52,6 +52,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Fixed colormap range as 'min,max' or 'min:max' (e.g., 0,1).",
     )
     parser.add_argument(
+        "--time_location",
+        required=False,
+        default="Upper Left Corner",
+        help="Location of time annotation (default: 'Upper Left Corner')",
+    )
+    parser.add_argument(
         "--output_folder",
         type=str,
         default=".",

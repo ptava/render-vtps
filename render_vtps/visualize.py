@@ -91,12 +91,9 @@ def pv_visualize(
         if os.path.exists(stl_path):
             stl_reader = pv.OpenDataFile(stl_path)
             stl_display = pv.Show(stl_reader, render_view)
-            try:
-                stl_display.Representation = 'Surface'
-            except Exception:
-                pass
             pv.ColorBy(stl_display, None)
             stl_display.DiffuseColor = [0.8, 0.8, 0.8]
+            stl_display.Representation = 'Surface'
             readers.append(stl_reader)
             displays.append(stl_display)
         else:

@@ -102,6 +102,12 @@ def generate_animation(
             pass
         export_displays.append(ed)
 
+    annotate = pv.AnnotateTimeFilter(readers[0])
+    annotate.Format = "t = %f"
+    ann_disp = pv.Show(annotate, export_view)
+    ann_disp.FontSize = 14
+    ann_disp.WindowLocation = args.time_location
+
     active_assoc, active_field = _determine_active_field(args, readers[0])
 
     for ed in export_displays:
