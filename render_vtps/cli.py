@@ -30,6 +30,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Specify directory where time dirs are stored (can be repeated)",
     )
     parser.add_argument(
+        "--stl_file",
+        type=str,
+        help="Path to an STL file to display alongside VTP data",
+    )
+    parser.add_argument(
         "--background_color",
         type=str,
         default="white",

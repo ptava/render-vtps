@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 from typing import List, Tuple
 
-import paraview.simple as pv  # type: ignore[import-untyped]
+import paraview.simple as pv
 
 from .pv_helpers import apply_coloring, discover_arrays, initialize_session
 from .utils import parse_camera_view_point, parse_render_size
@@ -74,9 +74,8 @@ def pv_visualize(
         if name is not None:
             apply_coloring(display, assoc, name)  # type: ignore[arg-type]
         else:
-            from paraview.simple import ColorBy  # type: ignore[import-untyped]
             try:
-                ColorBy(display, None)
+                pv.ColorBy(display, None)
             except Exception:
                 pass
             try:
@@ -86,6 +85,22 @@ def pv_visualize(
 
         readers.append(reader)
         displays.append(display)
+
+    stl_path = getattr(args, "stl_file", None)
+    if stl_path:
+        if os.path.exists(stl_path):
+            stl_reader = pv.OpenDataFile(stl_path)
+            stl_display = pv.Show(stl_reader, render_view)
+            try:
+                stl_display.Representation = 'Surface'
+            except Exception:
+                pass
+            pv.ColorBy(stl_display, None)
+            stl_display.DiffuseColor = [0.8, 0.8, 0.8]
+            readers.append(stl_reader)
+            displays.append(stl_display)
+        else:
+            print(f"Warning: STL file '{stl_path}' not found. Skipping.")
 
     pv.ResetCamera(render_view)
 

@@ -45,6 +45,7 @@ pvpython scripts/render_vtps.py
 |---|---|---|---|
 | `--vtp_filename` | str | *(first found)* | Specific VTP filename to load from each time directory. |
 | `--time_dirs_path` | str | `.` | Path that contains time directories (`0`, `0.1`, `1`, …). |
+| `--stl_file` | str | — | Optional STL geometry to include in the render. |
 | `--background_color` | str | `white` | Background color: `white` or `black`. |
 | `--field` | str | *(auto)* | Data array to color by. Falls back to the first available (POINTS or CELLS). |
 | `--range` | str | — | Fixed colormap range: `min,max` or `min:max` (example: `0,1`). |
