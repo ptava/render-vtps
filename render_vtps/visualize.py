@@ -1,4 +1,3 @@
-
 """Visualization pipeline setup."""
 from __future__ import annotations
 
@@ -13,23 +12,11 @@ from .utils import parse_camera_view_point, parse_render_size
 
 def pv_visualize(
     args,
-    time_dirs: List[str],
-    selected_vtp_filename: str,
-) -> Tuple[object, object, object]:
-    """Build the ParaView pipeline and return (reader, render_view, display)."""
+    sources: List[Tuple[List[str], str]],
+) -> Tuple[List[object], object, List[object]]:
+    """Build the ParaView pipeline and return (readers, render_view, displays)."""
     initialize_session()
 
-    file_list = []
-    for td in time_dirs:
-        fp = os.path.join(td, selected_vtp_filename)
-        if os.path.exists(fp):
-            file_list.append(fp)
-    if not file_list:
-        raise FileNotFoundError(
-            "Selected VTP not found in any time directory after filtering."
-        )
-
-    reader = pv.OpenDataFile(file_list)
     render_view = pv.GetActiveViewOrCreate("RenderView")
     render_view.ViewSize = list(parse_render_size(args.render_size))
 
@@ -44,43 +31,61 @@ def pv_visualize(
         )
         render_view.Background = [1.0, 1.0, 1.0]
 
-    display = pv.Show(reader, render_view)
-    display.Representation = args.representation
+    readers: List[object] = []
+    displays: List[object] = []
 
-    point_arrays, cell_arrays = discover_arrays(reader)
-
-    assoc = None
-    name = None
-    if args.field:
-        if args.field in point_arrays:
-            assoc, name = "POINTS", args.field
-        elif args.field in cell_arrays:
-            assoc, name = "CELLS", args.field
-        else:
-            print(
-                "Warning: Field '%s' not found. Available: POINTS=%s, CELLS=%s. Falling back."
-                % (args.field, point_arrays, cell_arrays)
+    for time_dirs, selected_vtp_filename in sources:
+        file_list: List[str] = []
+        for td in time_dirs:
+            fp = os.path.join(td, selected_vtp_filename)
+            if os.path.exists(fp):
+                file_list.append(fp)
+        if not file_list:
+            raise FileNotFoundError(
+                "Selected VTP not found in any time directory after filtering."
             )
-    if name is None:
-        if point_arrays:
-            assoc, name = "POINTS", point_arrays[0]
-        elif cell_arrays:
-            assoc, name = "CELLS", cell_arrays[0]
-        else:
-            print("No fields available for visualization.")
 
-    if name is not None:
-        apply_coloring(display, assoc, name)  # type: ignore[arg-type]
-    else:
-        from paraview.simple import ColorBy  # type: ignore[import-untyped]
-        try:
-            ColorBy(display, None)
-        except Exception:
-            pass
-        try:
-            display.DiffuseColor = [0.8, 0.8, 0.8]
-        except Exception:
-            pass
+        reader = pv.OpenDataFile(file_list)
+        display = pv.Show(reader, render_view)
+        display.Representation = args.representation
+
+        point_arrays, cell_arrays = discover_arrays(reader)
+
+        assoc = None
+        name = None
+        if args.field:
+            if args.field in point_arrays:
+                assoc, name = "POINTS", args.field
+            elif args.field in cell_arrays:
+                assoc, name = "CELLS", args.field
+            else:
+                print(
+                    "Warning: Field '%s' not found. Available: POINTS=%s, CELLS=%s. Falling back."
+                    % (args.field, point_arrays, cell_arrays)
+                )
+        if name is None:
+            if point_arrays:
+                assoc, name = "POINTS", point_arrays[0]
+            elif cell_arrays:
+                assoc, name = "CELLS", cell_arrays[0]
+            else:
+                print("No fields available for visualization.")
+
+        if name is not None:
+            apply_coloring(display, assoc, name)  # type: ignore[arg-type]
+        else:
+            from paraview.simple import ColorBy  # type: ignore[import-untyped]
+            try:
+                ColorBy(display, None)
+            except Exception:
+                pass
+            try:
+                display.DiffuseColor = [0.8, 0.8, 0.8]
+            except Exception:
+                pass
+
+        readers.append(reader)
+        displays.append(display)
 
     pv.ResetCamera(render_view)
 
@@ -92,4 +97,5 @@ def pv_visualize(
         render_view.CameraViewUp = list(up)
 
     pv.Render()
-    return reader, render_view, display
+    return readers, render_view, displays
+

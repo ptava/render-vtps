@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import argparse
-from typing import Dict
+from typing import Dict, List, Tuple
 
 from .animation import generate_animation
 from .discovery import find_vtp_files, validate_vtp_file
 from .interactive import interactive_camera_setup
+from .pv_helpers import apply_coloring, discover_arrays
 from .visualize import pv_visualize
 
 
@@ -19,13 +20,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--vtp_filename",
         type=str,
-        help="Specify VTP filename (default: first one found)"
+        action="append",
+        help="Specify VTP filename (can be repeated)",
     )
     parser.add_argument(
         "--time_dirs_path",
         type=str,
-        default=".",
-        help="Specify directory where time dirs are stored (default: current dir)",
+        action="append",
+        help="Specify directory where time dirs are stored (can be repeated)",
     )
     parser.add_argument(
         "--background_color",
@@ -102,25 +104,38 @@ def main(argv: list[str] | None = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    time_dirs, vtp_files = find_vtp_files(args.time_dirs_path)
-    selected_vtp_filename = validate_vtp_file(args.vtp_filename, vtp_files)
+    time_paths: List[str] = args.time_dirs_path or ["."]
+    vtp_names: List[str | None] = args.vtp_filename or [None] * len(time_paths)
+    if len(vtp_names) == 1 and len(time_paths) > 1:
+        vtp_names = vtp_names * len(time_paths)
+    if len(vtp_names) != len(time_paths):
+        raise ValueError("Number of --vtp_filename must match --time_dirs_path")
 
-    reader, render_view, display = pv_visualize(
-        args, time_dirs, selected_vtp_filename)
+    sources: List[Tuple[List[str], str]] = []
+    for path, vtp_name in zip(time_paths, vtp_names):
+        time_dirs, vtp_files = find_vtp_files(path)
+        selected = validate_vtp_file(vtp_name, vtp_files)
+        sources.append((time_dirs, selected))
 
-    captured_camera : Dict | None = None
-    if args.interactive_mode:
+    readers, render_view, displays = pv_visualize(args, sources)
+
+    captured_camera: Dict | None = None
+    if args.interactive_mode and readers:
         camera_position, camera_focal_point, camera_view_up, selected = \
-            interactive_camera_setup(reader, render_view, display)
+            interactive_camera_setup(readers[0], render_view, displays[0])
         if selected:
             args.field = selected
+            pt, cl = discover_arrays(readers[0])
+            assoc = "POINTS" if selected in pt else "CELLS"
+            for disp in displays:
+                apply_coloring(disp, assoc, selected)
         captured_camera = {
             "CameraPosition": camera_position,
             "CameraFocalPoint": camera_focal_point,
             "CameraViewUp": camera_view_up,
         }
 
-    generate_animation(args, reader, render_view, captured_camera)
+    generate_animation(args, readers, render_view, captured_camera)
 
 
     if __name__ == "__main__":  # pragma: no cover
