@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from typing import Tuple, Optional, Dict
+from typing import Tuple, Optional, Dict, List
 
 import paraview.simple as pv
 
@@ -59,7 +59,7 @@ def _determine_active_field(args, reader) -> Tuple[Optional[str], Optional[str]]
 
 def generate_animation(
         args,
-        reader,
+        readers: List[object],
         render_view,
         captured_camera: Optional[Dict]) -> None:
     os.makedirs(args.output_folder, exist_ok=True)
@@ -93,24 +93,25 @@ def generate_animation(
     except Exception:
         pass
 
-    export_display = pv.Show(reader, export_view)
+    export_displays: List[object] = []
+    for r in readers:
+        ed = pv.Show(r, export_view)
+        try:
+            ed.Representation = getattr(args, "representation", None) or "Surface"
+        except Exception:
+            pass
+        export_displays.append(ed)
 
-    # Prefer user-specified, else fall back to a safe default.
-    try:
-        export_display.Representation = getattr(
-            args, "representation", None) or "Surface"
-    except Exception:
-        pass
+    active_assoc, active_field = _determine_active_field(args, readers[0])
 
-    active_assoc, active_field = _determine_active_field(args, reader)
-
-    try:
-        if active_field:
-            pv.ColorBy(export_display, (active_assoc, active_field))
-        else:
-            pv.ColorBy(export_display, None)
-    except Exception:
-        pass
+    for ed in export_displays:
+        try:
+            if active_field:
+                pv.ColorBy(ed, (active_assoc, active_field))
+            else:
+                pv.ColorBy(ed, None)
+        except Exception:
+            pass
 
     lut = None
     if active_field:
@@ -122,7 +123,7 @@ def generate_animation(
             if hasattr(sb, "RangeLabelFormat"):
                 sb.RangeLabelFormat = "%.6g"
             try:
-                export_display.SetScalarBarVisibility(export_view, True)
+                export_displays[0].SetScalarBarVisibility(export_view, True)
             except Exception:
                 try:
                     pv.ShowScalarBarIfNotVisible(lut, export_view)
@@ -167,43 +168,45 @@ def generate_animation(
     overall_min, overall_max = float("inf"), float("-inf")
 
     for t in tvalues:
-        try:
-            if t is not None:
-                scene.TimeKeeper.Time = float(t)
-            pv.UpdatePipeline(time=t, proxy=reader)
-        except Exception:
-            pass
-
-        if active_field:
+        for r in readers:
             try:
-                data = pv.servermanager.Fetch(reader)
-                if data is not None:
-                    if active_assoc == "POINTS":
-                        arr = data.GetPointData().GetArray(active_field)
-                    else:
-                        arr = data.GetCellData().GetArray(active_field)
-                    if arr:
-                        r = arr.GetRange()
-                        if r and len(r) >= 2:
-                            overall_min = min(overall_min, float(r[0]))
-                            overall_max = max(overall_max, float(r[1]))
+                if t is not None:
+                    scene.TimeKeeper.Time = float(t)
+                pv.UpdatePipeline(time=t, proxy=r)
             except Exception:
                 pass
 
-            if not fixed_range:
+        if active_field:
+            for r in readers:
                 try:
-                    export_display.RescaleTransferFunctionToDataRange(
-                        True, False)
-                except TypeError:
-                    try:
-                        pv.GetColorTransferFunction(
-                            active_field).RescaleTransferFunctionToDataRange(True)
-                        pv.GetOpacityTransferFunction(
-                            active_field).RescaleTransferFunctionToDataRange(True)
-                    except Exception:
-                        pass
+                    data = pv.servermanager.Fetch(r)
+                    if data is not None:
+                        if active_assoc == "POINTS":
+                            arr = data.GetPointData().GetArray(active_field)
+                        else:
+                            arr = data.GetCellData().GetArray(active_field)
+                        if arr:
+                            rge = arr.GetRange()
+                            if rge and len(rge) >= 2:
+                                overall_min = min(overall_min, float(rge[0]))
+                                overall_max = max(overall_max, float(rge[1]))
                 except Exception:
                     pass
+
+            if not fixed_range:
+                for ed in export_displays:
+                    try:
+                        ed.RescaleTransferFunctionToDataRange(True, False)
+                    except TypeError:
+                        try:
+                            pv.GetColorTransferFunction(
+                                active_field).RescaleTransferFunctionToDataRange(True)
+                            pv.GetOpacityTransferFunction(
+                                active_field).RescaleTransferFunctionToDataRange(True)
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
 
         pv.Render(export_view)
 
