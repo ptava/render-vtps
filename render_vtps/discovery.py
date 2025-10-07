@@ -27,7 +27,7 @@ def find_vtp_files(time_dirs_path: str) -> Tuple[List[str], List[str]]:
             time_dirs.append(full_path)
             for root, _dirs, files in os.walk(full_path):
                 for file in files:
-                    if file.endswith(".vtp"):
+                    if file.endswith(".vtp") or file.endswith(".vtk"):
                         vtp_files.append(os.path.join(root, file))
 
     time_dirs.sort(key=lambda f: float(os.path.basename(f)))

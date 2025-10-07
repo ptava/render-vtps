@@ -1,53 +1,59 @@
+# animation.py
+"""Animation export with fixed or over-time color scaling."""
 
-"""Animation export with fixed or per-frame color scaling."""
 from __future__ import annotations
 
 import os
-from typing import Tuple, Optional, Dict, List
+from typing import Dict, List, Optional, Tuple
 
 import paraview.simple as pv
 
 from .utils import parse_fixed_range, parse_render_size
 
 
-def _determine_active_field(args, reader) -> Tuple[Optional[str], Optional[str]]:
+def _determine_active_field(
+    args,
+    reader: object
+) -> Tuple[Optional[str], Optional[str]]:
     """
     Return (assoc, name) for a *scalar* array only.
+
     Priority:
       --field if it exists and is scalar (POINTS or CELLS)
       first available scalar (POINTS preferred, else CELLS)
       (None, None) if no scalars found
     """
-    import paraview.simple as pv
-
     pt_scalars, cl_scalars = [], []
 
     try:
         data = pv.servermanager.Fetch(reader)
         if data:
-            pd, cd = data.GetPointData(), data.GetCellData()
-            if pd:
-                for i in range(pd.GetNumberOfArrays()):
-                    arr = pd.GetArray(i)
+            point_data = data.GetPointData()
+            cell_data = data.GetCellData()
+            if point_data:
+                for i in range(point_data.GetNumberOfArrays()):
+                    arr = point_data.GetArray(i)
                     if arr and arr.GetNumberOfComponents() == 1:
                         pt_scalars.append(arr.GetName())
-            if cd:
-                for i in range(cd.GetNumberOfArrays()):
-                    arr = cd.GetArray(i)
+            if cell_data:
+                for i in range(cell_data.GetNumberOfArrays()):
+                    arr = cell_data.GetArray(i)
                     if arr and arr.GetNumberOfComponents() == 1:
                         cl_scalars.append(arr.GetName())
     except Exception:
-        # if Fetch fails, we’ll just return (None, None) below
+        # If Fetch fails, we'll just return (None, None) below.
         pass
 
-    fld = getattr(args, "field", None)
-    if fld:
-        if fld in pt_scalars:
-            return "POINTS", fld
-        if fld in cl_scalars:
-            return "CELLS", fld
+    field_arg = getattr(args, "field", None)
+    if field_arg:
+        if field_arg in pt_scalars:
+            return "POINTS", field_arg
+        if field_arg in cl_scalars:
+            return "CELLS", field_arg
         print(
-            f"[COLOR] Requested field '{fld}' is not a scalar or not available; ignoring.")
+            f"[COLOR] Requested field '{field_arg}' is not a scalar or "
+            "not available; ignoring."
+        )
 
     if pt_scalars:
         return "POINTS", pt_scalars[0]
@@ -56,172 +62,129 @@ def _determine_active_field(args, reader) -> Tuple[Optional[str], Optional[str]]
 
     return None, None
 
-
 def generate_animation(
-        args,
-        readers: List[object],
-        render_view,
-        captured_camera: Optional[Dict]) -> None:
+    args,
+    readers: List[object],
+    render_view: object,
+    captured_camera: Optional[Dict]
+) -> None:
+    """Generate and save an animation with correct grid/edge updates."""
     os.makedirs(args.output_folder, exist_ok=True)
     out_base = os.path.join(args.output_folder, args.animation_filename)
-    res = list(parse_render_size(args.render_size))
+    image_size = list(parse_render_size(args.render_size))
     movie_ext = args.output_format.lower()
     cmin, cmax = parse_fixed_range(args.range)
 
+    # Dedicated export view; keep interactive view untouched
     export_view = pv.CreateView("RenderView")
-    export_view.ViewSize = res
-    for attr in ("UseOffscreenRenderingForScreenshots", "UseOffscreenRendering"):
-        try:
-            if hasattr(export_view, attr):
-                setattr(export_view, attr, 1)
-        except Exception:
-            pass
+    export_view.ViewSize = image_size
 
-    try:
-        export_view.Background = list(
-            getattr(render_view, "Background", [1.0, 1.0, 1.0]))
-        export_view.CameraPosition = captured_camera["CameraPosition"] \
-            if captured_camera else list(render_view.CameraPosition)
-        export_view.CameraFocalPoint = captured_camera["CameraFocalPoint"] \
-            if captured_camera else list(render_view.CameraFocalPoint)
-        export_view.CameraViewUp = captured_camera["CameraViewUp"] \
-            if captured_camera else list(render_view.CameraViewUp)
+    # Copy camera/background from provided view or captured camera
+    export_view.Background = list(render_view.Background)
 
-        if hasattr(render_view, "CameraParallelScale") \
-            and hasattr(export_view, "CameraParallelScale"):
-            export_view.CameraParallelScale = render_view.CameraParallelScale
-    except Exception:
-        pass
+    if captured_camera is not None:
+        export_view.CameraPosition = captured_camera["CameraPosition"]
+        export_view.CameraFocalPoint = captured_camera["CameraFocalPoint"]
+        export_view.CameraViewUp = captured_camera["CameraViewUp"]
+    else:
+        export_view.CameraPosition = list(render_view.CameraPosition)
+        export_view.CameraFocalPoint = list(render_view.CameraFocalPoint)
+        export_view.CameraViewUp = list(render_view.CameraViewUp)
 
+    export_view.CameraParallelScale = render_view.CameraParallelScale
+
+    # Show all readers in the export view
     export_displays: List[object] = []
-    for r in readers:
-        ed = pv.Show(r, export_view)
-        try:
-            ed.Representation = getattr(args, "representation", None) or "Surface"
-        except Exception:
-            pass
-        export_displays.append(ed)
+    for reader in readers:
+        disp = pv.Show(reader, export_view)
+        export_displays.append(disp)
 
+    # Add time annotation
     annotate = pv.AnnotateTimeFilter(readers[0])
-    annotate.Format = "t = %f"
+    annotate.Format = "t = {time:f}"
     ann_disp = pv.Show(annotate, export_view)
     ann_disp.FontSize = 14
     ann_disp.WindowLocation = args.time_location
 
-    active_assoc, active_field = _determine_active_field(args, readers[0])
+    # Representation: ensure edges update correctly
+    rep = getattr(args, "representation", None) or "Surface"
+    for disp in export_displays:
+        disp.SetRepresentationType(rep)
+        if rep == "Surface With Edges":
+            disp.EdgeColor = [0.0, 0.0, 0.0]
 
-    for ed in export_displays:
-        try:
-            if active_field:
-                pv.ColorBy(ed, (active_assoc, active_field))
-            else:
-                pv.ColorBy(ed, None)
-        except Exception:
-            pass
+    pv.Render(export_view)
 
-    lut = None
-    if active_field:
-        try:
-            lut = pv.GetColorTransferFunction(active_field)
-            sb = pv.GetScalarBar(lut, export_view)
-            sb.Title = active_field
-            sb.ComponentTitle = ""
-            if hasattr(sb, "RangeLabelFormat"):
-                sb.RangeLabelFormat = "%.6g"
-            try:
-                export_displays[0].SetScalarBarVisibility(export_view, True)
-            except Exception:
-                try:
-                    pv.ShowScalarBarIfNotVisible(lut, export_view)
-                except Exception:
-                    pass
-        except Exception:
-            pass
+    # Determine active scalar to color by (optional)
+    assoc, field = _determine_active_field(args, readers[0])
 
-    fixed_range = False
-    if active_field and cmin is not None and cmax is not None and cmin < cmax:
-        fixed_range = True
-        try:
-            lut = lut or pv.GetColorTransferFunction(active_field)
-            lut.RescaleTransferFunction(float(cmin), float(cmax))
-        except Exception:
-            pass
-        try:
-            pwf = pv.GetOpacityTransferFunction(active_field)
-            pwf.RescaleTransferFunction(float(cmin), float(cmax))
-        except Exception:
-            pass
-        for obj in (locals().get("lut"), locals().get("pwf")):
-            try:
-                if obj and hasattr(obj, "AutomaticRescaleRangeMode"):
-                    obj.AutomaticRescaleRangeMode = "Never"
-            except Exception:
-                pass
-        print(f"[COLORMAP] Fixed range set to [{cmin}, {cmax}]")
+    if field:
+        for disp in export_displays:
+            pv.ColorBy(disp, (assoc, field))
+        lut = pv.GetColorTransferFunction(field)
+        pwf = pv.GetOpacityTransferFunction(field)
+        export_displays[0].SetScalarBarVisibility(export_view, True)
+        sb = pv.GetScalarBar(lut, export_view)
+        sb.Title = field
+        sb.ComponentTitle = ""
+        sb.RangeLabelFormat = "%.6g"
+    else:
+        # Leave solid coloring; do not call ColorBy(..., None)
+        print("[COLOR] No scalar field; using solid coloring.")
+        lut = None
+        pwf = None
 
+    # Prepare time
     scene = pv.GetAnimationScene()
-    try:
-        scene.UpdateAnimationUsingDataTimeSteps()
-    except Exception:
-        pass
-    try:
-        tvalues = list(scene.TimeKeeper.TimestepValues)
-    except Exception:
-        tvalues = []
+    scene.UpdateAnimationUsingDataTimeSteps()
+    tvalues = list(scene.TimeKeeper.TimestepValues)
     if not tvalues:
-        tvalues = [None]
+        tvalues = [0.0]
 
-    overall_min, overall_max = float("inf"), float("-inf")
+    # Decide color range (only if a field is selected)
+    if field:
+        if (
+            cmin is not None and cmax is not None and
+            isinstance(cmin, (int, float)) and
+            isinstance(cmax, (int, float)) and
+            cmin < cmax
+        ):
+            lut.RescaleTransferFunction(float(cmin), float(cmax))
+            pwf.RescaleTransferFunction(float(cmin), float(cmax))
+        else:
+            overall_min = float("inf")
+            overall_max = float("-inf")
 
-    for t in tvalues:
-        for r in readers:
-            try:
-                if t is not None:
-                    scene.TimeKeeper.Time = float(t)
-                pv.UpdatePipeline(time=t, proxy=r)
-            except Exception:
-                pass
+            for t in tvalues:
+                for reader in readers:
+                    pv.UpdatePipeline(time=float(t), proxy=reader)
+                    data = pv.servermanager.Fetch(reader)
+                    if data is None:
+                        continue
+                    if assoc == "POINTS":
+                        arr = data.GetPointData().GetArray(field)
+                    else:
+                        arr = data.GetCellData().GetArray(field)
+                    if arr is None:
+                        continue
+                    rng = arr.GetRange()
+                    if rng and len(rng) >= 2:
+                        overall_min = min(overall_min, float(rng[0]))
+                        overall_max = max(overall_max, float(rng[1]))
 
-        if active_field:
-            for r in readers:
-                try:
-                    data = pv.servermanager.Fetch(r)
-                    if data is not None:
-                        if active_assoc == "POINTS":
-                            arr = data.GetPointData().GetArray(active_field)
-                        else:
-                            arr = data.GetCellData().GetArray(active_field)
-                        if arr:
-                            rge = arr.GetRange()
-                            if rge and len(rge) >= 2:
-                                overall_min = min(overall_min, float(rge[0]))
-                                overall_max = max(overall_max, float(rge[1]))
-                except Exception:
-                    pass
+            if overall_min < overall_max and overall_min < float("inf"):
+                lut.RescaleTransferFunction(overall_min, overall_max)
+                pwf.RescaleTransferFunction(overall_min, overall_max)
 
-            if not fixed_range:
-                for ed in export_displays:
-                    try:
-                        ed.RescaleTransferFunctionToDataRange(True, False)
-                    except TypeError:
-                        try:
-                            pv.GetColorTransferFunction(
-                                active_field).RescaleTransferFunctionToDataRange(True)
-                            pv.GetOpacityTransferFunction(
-                                active_field).RescaleTransferFunctionToDataRange(True)
-                        except Exception:
-                            pass
-                    except Exception:
-                        pass
-
-        pv.Render(export_view)
-
+    # Activate the export view and save the animation
+    pv.SetActiveView(export_view)
+    frame_window = [0, max(0, len(tvalues) - 1)]
     movie_path = f"{out_base}.{movie_ext}"
-    try:
-        pv.SaveAnimation(movie_path, export_view,
-                         ImageResolution=res, FrameRate=args.fps)
-        print(f"[MOVIE] saved: {movie_path} @ {args.fps} fps")
-        print(
-            f"[RANGE] observed overall data range: [{overall_min}, {overall_max}]")
-    except Exception as exc:
-        print(f"[MOVIE] SaveAnimation failed: {exc}")
+    pv.SaveAnimation(
+        movie_path,
+        export_view,
+        ImageResolution=image_size,
+        FrameRate=args.fps,
+        FrameWindow=frame_window
+    )
+
