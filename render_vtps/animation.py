@@ -62,6 +62,32 @@ def _determine_active_field(
 
     return None, None
 
+def _extract_time_values_from_reader(
+        reader: object
+) -> List[float]:
+    file_names = getattr(reader, "FileNames", None)
+    if not file_names:
+        return [], []
+    if isinstance(file_names, str):
+        file_list = [file_names]
+    else:
+        file_list = list(file_names)
+
+    time_values: List[float] = []
+    for file_path in file_list:
+        time_dir = os.path.basename(os.path.dirname(file_path))
+        try:
+            time_values.append(float(time_dir))
+        except ValueError:
+            continue
+    return time_values
+
+def _normalise_key_times(tvalues: List[float]) -> List[float]:
+    span = max(tvalues) - min(tvalues)
+    if span == 0.0:
+        return [0.0 for _ in tvalues]
+    return [(t - min(tvalues)) / span for t in tvalues]
+
 def generate_animation(
     args,
     readers: List[object],
@@ -99,13 +125,6 @@ def generate_animation(
         disp = pv.Show(reader, export_view)
         export_displays.append(disp)
 
-    # Add time annotation
-    annotate = pv.AnnotateTimeFilter(readers[0])
-    annotate.Format = "t = {time:f}"
-    ann_disp = pv.Show(annotate, export_view)
-    ann_disp.FontSize = 14
-    ann_disp.WindowLocation = args.time_location
-
     # Representation: ensure edges update correctly
     rep = getattr(args, "representation", None) or "Surface"
     for disp in export_displays:
@@ -138,8 +157,82 @@ def generate_animation(
     scene = pv.GetAnimationScene()
     scene.UpdateAnimationUsingDataTimeSteps()
     tvalues = list(scene.TimeKeeper.TimestepValues)
+
+# --- extract time values safely ---
+    reader_time_values = _extract_time_values_from_reader(readers[0])
+    tvalues = [float(v) for v in (reader_time_values or [])]
     if not tvalues:
         tvalues = [0.0]
+
+# --- annotation ---
+    if reader_time_values:
+        # Use a Text source, but update it via a PythonAnimationCue (not keyframes)
+        text_source = pv.Text(registrationName="TimeLabel")
+        text_source.Text = f"time = {tvalues[0]:g}"
+
+        ann_disp = pv.Show(text_source, export_view)
+        ann_disp.FontSize = 14
+        ann_disp.WindowLocation = args.time_location
+
+        scene = pv.GetAnimationScene()
+
+        cue = pv.PythonAnimationCue()
+        cue.StartTime = scene.StartTime
+        cue.EndTime = scene.EndTime
+
+        # Embed the time list directly into the cue script (runs in its own interpreter)
+        cue.Script = f"""
+from paraview.simple import FindSource, GetAnimationScene, Render
+
+_times = {tvalues!r}  # your custom physical times, list of floats
+
+def start_cue(cue):
+    # initialize label at first value
+    src = FindSource("TimeLabel")
+    if src is not None and _times:
+        src.Text = "time = %g" % float(_times[0])
+        Render()
+
+def tick(cue):
+    scene = GetAnimationScene()
+    tk = scene.TimeKeeper
+
+    src = FindSource("TimeLabel")
+    if src is None or not _times:
+        return
+
+    steps = list(getattr(tk, "TimestepValues", []) or [])
+
+    if steps:
+        # Map current dataset time -> nearest timestep index
+        cur = float(tk.Time)
+        i = min(range(len(steps)), key=lambda j: abs(float(steps[j]) - cur))
+        # If counts differ, map index proportionally
+        if len(_times) != len(steps) and len(steps) > 1 and len(_times) > 1:
+            i = int(round(i * (len(_times) - 1) / (len(steps) - 1)))
+    else:
+        # Fallback: cue time is normalized in [0,1]
+        at = float(cue.GetAnimationTime())
+        i = int(round(at * (len(_times) - 1))) if len(_times) > 1 else 0
+
+    i = max(0, min(i, len(_times) - 1))
+    src.Text = "time = %g" % float(_times[i])
+    Render()
+
+def end_cue(cue):
+    # optional: leave last value, or do nothing
+    pass
+"""
+
+        scene.Cues.append(cue)
+
+    else:
+        annotate = pv.AnnotateTimeFilter(Input=readers[0])
+        annotate.Format = "time = {time:f}"
+
+        ann_disp = pv.Show(annotate, export_view)
+        ann_disp.FontSize = 14
+        ann_disp.WindowLocation = args.time_location
 
     # Decide color range (only if a field is selected)
     if field:
