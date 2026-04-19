@@ -35,6 +35,61 @@ def parse_render_size(size: str) -> Tuple[int, int]:
             f"Invalid --render_size '{size}'. Expected 'WxH'.") from exc
 
 
+def parse_background_color(value: str | None) -> Tuple[float, float, float]:
+    """Parse a background color from an RGB triplet."""
+    if value is None:
+        return 1.0, 1.0, 1.0
+
+    tokens = [part for part in re.split(r"[\s,]+", str(value).strip()) if part]
+    if len(tokens) != 3:
+        raise ValueError(
+            f"Invalid --background '{value}'. Expected 'r,g,b'."
+        )
+
+    rgb = [float(token) for token in tokens]
+    if all(0.0 <= channel <= 1.0 for channel in rgb):
+        return tuple(rgb)
+    if all(0.0 <= channel <= 255.0 for channel in rgb):
+        return tuple(channel / 255.0 for channel in rgb)
+    raise ValueError(
+        f"Invalid --background '{value}'. RGB values must be in 0-1 or 0-255."
+    )
+
+
+def apply_background_color(view, color: Tuple[float, float, float]) -> None:
+    """Apply a solid background color across ParaView versions."""
+    rgb = list(color)
+    view.Background = rgb
+
+    try:
+        view.UseColorPaletteForBackground = 0
+    except Exception:
+        pass
+
+    try:
+        view.BackgroundColorMode = "Single Color"
+    except Exception:
+        try:
+            view.BackgroundColorMode = 0
+        except Exception:
+            pass
+
+    try:
+        view.Background2 = rgb
+    except Exception:
+        pass
+
+    try:
+        view.UseGradientBackground = 0
+    except Exception:
+        pass
+
+    try:
+        view.UseTexturedBackground = 0
+    except Exception:
+        pass
+
+
 def parse_camera_view_point(val: str | None) -> Tuple[Tuple[float, float, float], Tuple[float, float, float], Tuple[float, float, float]] | None:
     """Parse a camera vector list of 9 numbers: pos(3), focal(3), up(3)."""
     if not val:

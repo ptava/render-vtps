@@ -4,11 +4,18 @@
 from __future__ import annotations
 
 import os
+import shutil
+from xml.sax.saxutils import escape
 from typing import Dict, List, Optional, Tuple
 
 import paraview.simple as pv
 
-from .utils import parse_fixed_range, parse_render_size
+from .utils import (
+    apply_background_color,
+    parse_background_color,
+    parse_fixed_range,
+    parse_render_size,
+)
 
 
 def _determine_active_field(
@@ -88,6 +95,97 @@ def _normalise_key_times(tvalues: List[float]) -> List[float]:
         return [0.0 for _ in tvalues]
     return [(t - min(tvalues)) / span for t in tvalues]
 
+
+def _surface_file_lists(readers: List[object], count: int) -> List[List[str]]:
+    file_lists: List[List[str]] = []
+    for reader in readers[:count]:
+        file_names = getattr(reader, "FileNames", None)
+        if not file_names:
+            file_lists.append([])
+        elif isinstance(file_names, str):
+            file_lists.append([file_names])
+        else:
+            file_lists.append(list(file_names))
+    return file_lists
+
+
+def _safe_surface_name(file_list: List[str], index: int) -> str:
+    stem = f"surface_{index + 1:02d}"
+    if file_list:
+        stem = os.path.splitext(os.path.basename(file_list[0]))[0]
+    safe = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in stem)
+    return safe
+
+
+def _unique_surface_name(base_name: str, used_names: set[str]) -> str:
+    name = base_name
+    suffix = 2
+    while name in used_names:
+        name = f"{base_name}_{suffix:02d}"
+        suffix += 1
+    used_names.add(name)
+    return name
+
+
+def _link_or_copy(src: str, dst: str) -> None:
+    if os.path.lexists(dst):
+        os.remove(dst)
+    try:
+        target = os.path.relpath(os.path.abspath(src), start=os.path.dirname(dst))
+        os.symlink(target, dst)
+    except OSError:
+        shutil.copy2(src, dst)
+
+
+def _write_surface_collections(output_folder: str, readers: List[object], surface_count: int) -> None:
+    collections_root = os.path.join(output_folder, "surface_collections")
+    os.makedirs(collections_root, exist_ok=True)
+    used_names: set[str] = set()
+
+    for index, file_list in enumerate(_surface_file_lists(readers, surface_count)):
+        if not file_list:
+            continue
+
+        surface_name = _unique_surface_name(
+            _safe_surface_name(file_list, index),
+            used_names,
+        )
+        surface_dir = os.path.join(
+            collections_root,
+            surface_name,
+        )
+        os.makedirs(surface_dir, exist_ok=True)
+
+        datasets: List[Tuple[float, str]] = []
+        for step, src in enumerate(file_list):
+            try:
+                timestep = float(os.path.basename(os.path.dirname(src)))
+            except ValueError:
+                timestep = float(step)
+            ext = os.path.splitext(src)[1]
+            local_name = f"{surface_name}_{step:06d}{ext}"
+            local_path = os.path.join(surface_dir, local_name)
+            _link_or_copy(src, local_path)
+            datasets.append((timestep, local_name))
+
+        pvd_path = os.path.join(surface_dir, "collection.pvd")
+        with open(pvd_path, "w", encoding="utf-8") as handle:
+            handle.write(
+                "<?xml version=\"1.0\"?>\n"
+                "<VTKFile type=\"Collection\" version=\"0.1\" byte_order=\"LittleEndian\">\n"
+                "  <Collection>\n"
+            )
+            for timestep, src in datasets:
+                handle.write(
+                    f"    <DataSet timestep=\"{timestep:.16g}\" group=\"\" part=\"0\" file=\"{escape(src)}\"/>\n"
+                )
+            handle.write(
+                "  </Collection>\n"
+                "</VTKFile>\n"
+            )
+
+        print(f"[EXPORT] Wrote surface collection: {pvd_path}")
+
 def generate_animation(
     args,
     readers: List[object],
@@ -100,13 +198,18 @@ def generate_animation(
     image_size = list(parse_render_size(args.render_size))
     movie_ext = args.output_format.lower()
     cmin, cmax = parse_fixed_range(args.range)
+    surface_count = len(getattr(args, "source_representations", None) or [])
+
+    if getattr(args, "collections", False):
+        _write_surface_collections(args.output_folder, readers, surface_count)
 
     # Dedicated export view; keep interactive view untouched
     export_view = pv.CreateView("RenderView")
     export_view.ViewSize = image_size
 
-    # Copy camera/background from provided view or captured camera
-    export_view.Background = list(render_view.Background)
+    # Set export background explicitly so SaveAnimation uses the requested color.
+    background = parse_background_color(getattr(args, "background", None))
+    apply_background_color(export_view, background)
 
     if captured_camera is not None:
         export_view.CameraPosition = captured_camera["CameraPosition"]
@@ -126,8 +229,9 @@ def generate_animation(
         export_displays.append(disp)
 
     # Representation: ensure edges update correctly
-    rep = getattr(args, "representation", None) or "Surface"
-    for disp in export_displays:
+    source_representations = getattr(args, "source_representations", None) or []
+    for index, disp in enumerate(export_displays):
+        rep = source_representations[index] if index < len(source_representations) else "Surface"
         disp.SetRepresentationType(rep)
         if rep == "Surface With Edges":
             disp.EdgeColor = [0.0, 0.0, 0.0]
@@ -280,4 +384,3 @@ def end_cue(cue):
         FrameRate=args.fps,
         FrameWindow=frame_window
     )
-

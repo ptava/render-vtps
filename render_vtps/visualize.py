@@ -7,7 +7,12 @@ from typing import List, Tuple
 import paraview.simple as pv
 
 from .pv_helpers import apply_coloring, discover_arrays, initialize_session
-from .utils import parse_camera_view_point, parse_render_size
+from .utils import (
+    apply_background_color,
+    parse_background_color,
+    parse_camera_view_point,
+    parse_render_size,
+)
 
 
 def pv_visualize(
@@ -19,22 +24,15 @@ def pv_visualize(
 
     render_view = pv.GetActiveViewOrCreate("RenderView")
     render_view.ViewSize = list(parse_render_size(args.render_size))
-
-    bg = (args.background_color or "white").lower()
-    if bg == "white":
-        render_view.Background = [1.0, 1.0, 1.0]
-    elif bg == "black":
-        render_view.Background = [0.0, 0.0, 0.0]
-    else:
-        print(
-            f"Warning: Unknown background color '{args.background_color}'. Using default white."
-        )
-        render_view.Background = [1.0, 1.0, 1.0]
+    background = parse_background_color(args.background)
+    apply_background_color(render_view, background)
 
     readers: List[object] = []
     displays: List[object] = []
 
-    for time_dirs, selected_vtp_filename in sources:
+    source_representations = getattr(args, "source_representations", None) or []
+
+    for index, (time_dirs, selected_vtp_filename) in enumerate(sources):
         file_list: List[str] = []
         for td in time_dirs:
             fp = os.path.join(td, selected_vtp_filename)
@@ -47,7 +45,7 @@ def pv_visualize(
 
         reader = pv.OpenDataFile(file_list)
         display = pv.Show(reader, render_view)
-        display.Representation = args.representation
+        display.Representation = source_representations[index]
 
         point_arrays, cell_arrays = discover_arrays(reader)
 
@@ -86,14 +84,14 @@ def pv_visualize(
         readers.append(reader)
         displays.append(display)
 
-    stl_path = getattr(args, "stl_file", None)
-    if stl_path:
+    stl_paths = getattr(args, "stl_file", None) or []
+    for stl_path in stl_paths:
         if os.path.exists(stl_path):
             stl_reader = pv.OpenDataFile(stl_path)
             stl_display = pv.Show(stl_reader, render_view)
             pv.ColorBy(stl_display, None)
             stl_display.DiffuseColor = [0.8, 0.8, 0.8]
-            stl_display.Representation = 'Surface'
+            stl_display.Representation = "Surface"
             readers.append(stl_reader)
             displays.append(stl_display)
         else:
@@ -110,4 +108,3 @@ def pv_visualize(
 
     pv.Render()
     return readers, render_view, displays
-

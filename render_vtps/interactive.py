@@ -87,7 +87,7 @@ def interactive_camera_setup(reader, render_view, display) -> Tuple[tuple, tuple
             list(camera_focal_point) + list(camera_view_up)
         cam_str = "[" + ",".join(f"{float(v):.9g}" for v in cam_vals) + "]"
         print("Reusable camera for future runs:")
-        print(f"--camera_view_point '{cam_str}'")
+        print(f"--camera '{cam_str}'")
     except Exception as exc:  # noqa: BLE001
         print(f"Warning: could not format camera for reuse: {exc}")
 

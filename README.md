@@ -23,13 +23,13 @@ A `pvpython` script to render time-series **VTP** files (e.g., from OpenFOAM pos
 From inside the project folder:
 
 ```bash
-pvpython scripts/render_vtps.py   --time_dirs_path path/to/case/postProcessing/surfaces   --range 0,1   --output_folder ./out
+pvpython scripts/render_vtps.py --path path/to/case/postProcessing/surfaces --range 0,1 --output ./out
 ```
 
 This will:
-1) Discover time directories in `--time_dirs_path`,  
-2) Pick the VTP filename (or a specific one if you pass `--vtp_filename`),  
-3) Render a movie named `animation.avi` by default in `--output_folder`.
+1) Discover time directories in `--path`,  
+2) Pick the VTP filename (or a specific one if you pass `--vtp`),  
+3) Render a movie named `animation.avi` by default in `--output`.
 
 ---
 
@@ -43,20 +43,23 @@ pvpython scripts/render_vtps.py
 
 | Flag | Type | Default | Description |
 |---|---|---|---|
-| `--vtp_filename` | str | *(first found)* | Specific VTP filename to load from each time directory. |
-| `--time_dirs_path` | str | `.` | Path that contains time directories (`0`, `0.1`, `1`, …). |
-| `--stl_file` | str | — | Optional STL geometry to include in the render. |
-| `--background_color` | str | `white` | Background color: `white` or `black`. |
+| `--vtp` | str | *(first found)* | Specific VTP filename to load from each time directory. |
+| `--path` | str | `.` | Path that contains time directories (`0`, `0.1`, `1`, …). |
+| `--stl` | str | — | Optional STL geometry to include in the render. Repeat to load multiple geometries. |
+| `--background` | str | `1,1,1` | Background RGB as `r,g,b`, using values in `0-1` or `0-255`. |
 | `--field` | str | *(auto)* | Data array to color by. Falls back to the first available (POINTS or CELLS). |
 | `--range` | str | — | Fixed colormap range: `min,max` or `min:max` (example: `0,1`). |
-| `--output_folder` | str | `.` | Destination folder for the exported movie. |
-| `--animation_filename` | str | `animation` | Basename of the output movie (without extension). |
-| `--output_format` | str | `avi` | Movie format/extension (e.g., `avi`, `mp4`, depending on your build). |
-| `--representation` | str | `Surface` | ParaView representation (e.g., `Surface`, `Surface With Edges`, `Wireframe`, `Volume`). |
-| `--render_size` | str | `1280x720` | Output resolution (e.g., `1920x1080`). |
-| `--camera_view_point` | str | — | 9 numbers: `[pos_x,pos_y,pos_z,focal_x,focal_y,focal_z,up_x,up_y,up_z]`. |
-| `--interactive_mode` | flag | `False` | Open a window to adjust camera and optionally choose field. |
+| `--output` | str | `.` | Destination folder for the exported movie. |
+| `--name` | str | `animation` | Basename of the output movie (without extension). |
+| `--format` | str | `avi` | Movie format/extension (e.g., `avi`, `mp4`, depending on your build). |
+| `--representation` | str | `Surface` | ParaView representation. Pass once to use the same representation everywhere, or repeat once per `--path`. |
+| `--size` | str | `1280x720` | Output resolution (e.g., `1920x1080`). |
+| `--camera` | str | — | 9 numbers: `[pos_x,pos_y,pos_z,focal_x,focal_y,focal_z,up_x,up_y,up_z]`. |
+| `--interactive` | flag | `False` | Open a window to adjust camera and optionally choose field. |
 | `--fps` | int | `30` | Frames per second for the output movie. |
+| `--collections` | flag | `False` | Write per-surface flattened time-series folders for direct use in ParaView. |
+
+Older underscore-style flags are still accepted for compatibility.
 
 ---
 
@@ -65,7 +68,7 @@ pvpython scripts/render_vtps.py
 ### 1) Fixed Range for Consistent Coloring
 Use a **fixed** color scale to avoid per-frame rescaling (great for comparisons over time):
 ```bash
-pvpython scripts/render_vtps.py   --time_dirs_path ./surfaces   --vtp_filename p_field.vtp   --field p   --range -50,150   --output_folder ./out   --animation_filename p_movie   --output_format avi   --render_size 1920x1080   --fps 24
+pvpython scripts/render_vtps.py --path ./surfaces --vtp p_field.vtp --field p --range -50,150 --output ./out --name p_movie --format avi --size 1920x1080 --fps 24
 ```
 
 ### 2) Let It Auto-Rescale Per Frame
@@ -73,14 +76,56 @@ If you **omit** `--range`, the tool will still require it (by design). If you wa
 
 ### 3) Interactive Camera + Reusable Camera String
 ```bash
-pvpython scripts/render_vtps.py   --time_dirs_path ./surfaces   --range 0,1   --interactive_mode
+pvpython scripts/render_vtps.py --path ./surfaces --range 0,1 --interactive
 ```
 - A window opens; set your camera and close the window.  
 - The script prints a **reusable camera string**, e.g.:
   ```
-  --camera_view_point '[1.2,0.5,0.3,  0,0,0,  0,1,0]'
+  --camera '[1.2,0.5,0.3,  0,0,0,  0,1,0]'
   ```
 - Next runs can be scripted with that exact camera.
+
+### 4) Set a Solid RGB Background
+```bash
+pvpython scripts/render_vtps.py --path ./surfaces --range 0,1 --background 0.15,0.15,0.18
+```
+- RGB values can be given either in `0-1` or `0-255`.
+- Example: `--background 38,38,46` is also valid.
+
+### 5) Use Different Representations Per Surface
+```bash
+pvpython scripts/render_vtps.py \
+  --path ./pressure_surfaces \
+  --path ./wall_surfaces \
+  --representation Surface \
+  --representation "Surface With Edges" \
+  --range 0,1
+```
+- If you pass one `--representation`, it is reused for all surfaces.
+- If you pass more than one `--representation`, the count must match the number of `--path` arguments.
+
+### 6) Load Multiple STL Geometries
+```bash
+pvpython scripts/render_vtps.py \
+  --path ./surfaces \
+  --stl body.stl \
+  --stl probe.stl \
+  --range 0,1
+```
+- STL geometries are added as solid `Surface` displays.
+
+### 7) Write Surface Collections
+```bash
+pvpython scripts/render_vtps.py \
+  --path ./surfaces \
+  --range 0,1 \
+  --output ./out \
+  --collections
+```
+- This creates `./out/surface_collections/`.
+- Each rendered surface gets its own folder with renamed files like `surface_name_0p1.vtk` or `surface_name_10.vtp`.
+- A `collection.pvd` file is also written in the same folder for direct opening in ParaView.
+- Open `collection.pvd` in ParaView to inspect that surface as a time series.
 
 ---
 
@@ -94,9 +139,11 @@ pvpython scripts/render_vtps.py   --time_dirs_path ./surfaces   --range 0,1   --
 
 ## Output & Formats
 
-- Output movie path: `--output_folder/--animation_filename.--output_format`  
+- Output movie path: `--output/--name.--format`  
   Example: `./out/animation.avi`
 - Supported formats depend on the ParaView build/FFmpeg availability. If `mp4` fails, try `avi` or `ogv`.
+- Repeated `--path`, `--representation`, and `--stl` arguments are applied in the order they are provided.
+- Surface collection folders are written only when `--collections` is passed.
 
 ---
 
@@ -128,9 +175,9 @@ render_vtps_refactor/
 
 ## Troubleshooting
 
-- **No VTP files found**: Check `--time_dirs_path` and that time directories contain `.vtp` files.  
-- **Field not found**: Use `--interactive_mode` to list arrays and copy the correct name, or omit `--field` to auto-pick.  
-- **Movie save fails**: Try a different `--output_format`. Ensure your ParaView has FFmpeg support.  
+- **No VTP files found**: Check `--path` and that time directories contain `.vtp` files.  
+- **Field not found**: Use `--interactive` to list arrays and copy the correct name, or omit `--field` to auto-pick.  
+- **Movie save fails**: Try a different `--format`. Ensure your ParaView has FFmpeg support.  
 - **Black/white frames**: Verify `--representation` and background; ensure your OpenGL/offscreen setup is valid.
 
 ---
@@ -173,11 +220,11 @@ render-vtps --help
 ## Usage
 User can run `render-vtps` from the command line after installation or use the following:
 ```bash
-pvpython -m render_vtps.cli --time_dirs_path <path> --range 0,1 --output_folder ./out
+pvpython -m render_vtps.cli --path <path> --range 0,1 --output ./out
 ```
 or
 ```bash
-pvpython scripts/render_vtps.py --time_dirs_path <path> --range 0,1 --output_folder ./out
+pvpython scripts/render_vtps.py --path <path> --range 0,1 --output ./out
 ```
 `render-vtps.py` is a wrapper whose only job is to call `render_vtps.cli:main`
 
