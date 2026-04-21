@@ -90,6 +90,66 @@ def apply_background_color(view, color: Tuple[float, float, float]) -> None:
         pass
 
 
+def apply_foreground_color(view, color: Tuple[float, float, float]) -> None:
+    """Apply view-level foreground colors across ParaView versions."""
+    rgb = list(color)
+
+    for prop in (
+        "OrientationAxesLabelColor",
+        "CenterAxesColor",
+        "AxesColor",
+    ):
+        try:
+            setattr(view, prop, rgb)
+        except Exception:
+            pass
+
+    try:
+        axes_grid = view.AxesGrid
+    except Exception:
+        axes_grid = None
+
+    if axes_grid is not None:
+        for prop in (
+            "XTitleColor",
+            "YTitleColor",
+            "ZTitleColor",
+            "XLabelColor",
+            "YLabelColor",
+            "ZLabelColor",
+            "GridColor",
+        ):
+            try:
+                setattr(axes_grid, prop, rgb)
+            except Exception:
+                pass
+
+
+def apply_text_color(display, color: Tuple[float, float, float]) -> None:
+    """Apply annotation text color across ParaView display proxy variants."""
+    rgb = list(color)
+    for prop in ("Color", "FontColor"):
+        try:
+            setattr(display, prop, rgb)
+        except Exception:
+            pass
+
+
+def apply_scalar_bar_color(scalar_bar, color: Tuple[float, float, float]) -> None:
+    """Apply scalar bar title, label, and axis colors where available."""
+    rgb = list(color)
+    for prop in (
+        "TitleColor",
+        "LabelColor",
+        "AxisColor",
+        "TickColor",
+    ):
+        try:
+            setattr(scalar_bar, prop, rgb)
+        except Exception:
+            pass
+
+
 def parse_camera_view_point(val: str | None) -> Tuple[Tuple[float, float, float], Tuple[float, float, float], Tuple[float, float, float]] | None:
     """Parse a camera vector list of 9 numbers: pos(3), focal(3), up(3)."""
     if not val:

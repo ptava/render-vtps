@@ -12,10 +12,15 @@ import paraview.simple as pv
 
 from .utils import (
     apply_background_color,
+    apply_foreground_color,
+    apply_scalar_bar_color,
+    apply_text_color,
     parse_background_color,
     parse_fixed_range,
     parse_render_size,
 )
+
+FOREGROUND_COLOR = (0.0, 0.0, 0.0)
 
 
 def _determine_active_field(
@@ -74,7 +79,7 @@ def _extract_time_values_from_reader(
 ) -> List[float]:
     file_names = getattr(reader, "FileNames", None)
     if not file_names:
-        return [], []
+        return []
     if isinstance(file_names, str):
         file_list = [file_names]
     else:
@@ -210,6 +215,7 @@ def generate_animation(
     # Set export background explicitly so SaveAnimation uses the requested color.
     background = parse_background_color(getattr(args, "background", None))
     apply_background_color(export_view, background)
+    apply_foreground_color(export_view, FOREGROUND_COLOR)
 
     if captured_camera is not None:
         export_view.CameraPosition = captured_camera["CameraPosition"]
@@ -251,6 +257,7 @@ def generate_animation(
         sb.Title = field
         sb.ComponentTitle = ""
         sb.RangeLabelFormat = "%.6g"
+        apply_scalar_bar_color(sb, FOREGROUND_COLOR)
     else:
         # Leave solid coloring; do not call ColorBy(..., None)
         print("[COLOR] No scalar field; using solid coloring.")
@@ -264,7 +271,8 @@ def generate_animation(
 
 # --- extract time values safely ---
     reader_time_values = _extract_time_values_from_reader(readers[0])
-    tvalues = [float(v) for v in (reader_time_values or [])]
+    if reader_time_values:
+        tvalues = [float(v) for v in reader_time_values]
     if not tvalues:
         tvalues = [0.0]
 
@@ -277,6 +285,7 @@ def generate_animation(
         ann_disp = pv.Show(text_source, export_view)
         ann_disp.FontSize = 14
         ann_disp.WindowLocation = args.time_location
+        apply_text_color(ann_disp, FOREGROUND_COLOR)
 
         scene = pv.GetAnimationScene()
 
@@ -337,6 +346,7 @@ def end_cue(cue):
         ann_disp = pv.Show(annotate, export_view)
         ann_disp.FontSize = 14
         ann_disp.WindowLocation = args.time_location
+        apply_text_color(ann_disp, FOREGROUND_COLOR)
 
     # Decide color range (only if a field is selected)
     if field:

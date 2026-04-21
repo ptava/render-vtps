@@ -9,10 +9,13 @@ import paraview.simple as pv
 from .pv_helpers import apply_coloring, discover_arrays, initialize_session
 from .utils import (
     apply_background_color,
+    apply_foreground_color,
     parse_background_color,
     parse_camera_view_point,
     parse_render_size,
 )
+
+FOREGROUND_COLOR = (0.0, 0.0, 0.0)
 
 
 def pv_visualize(
@@ -26,6 +29,7 @@ def pv_visualize(
     render_view.ViewSize = list(parse_render_size(args.render_size))
     background = parse_background_color(args.background)
     apply_background_color(render_view, background)
+    apply_foreground_color(render_view, FOREGROUND_COLOR)
 
     readers: List[object] = []
     displays: List[object] = []
