@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import os
 import shutil
+import subprocess
+import tempfile
 from xml.sax.saxutils import escape
 from typing import Dict, List, Optional, Tuple
 
@@ -190,6 +192,84 @@ def _write_surface_collections(output_folder: str, readers: List[object], surfac
             )
 
         print(f"[EXPORT] Wrote surface collection: {pvd_path}")
+
+
+def _frame_paths(folder: str) -> List[str]:
+    return sorted(
+        os.path.join(folder, name)
+        for name in os.listdir(folder)
+        if name.lower().endswith(".png")
+    )
+
+
+def _save_animation_with_first_frame_hold(
+    movie_path: str,
+    export_view: object,
+    image_size: List[int],
+    fps: int,
+    frame_window: List[int],
+    hold_seconds: float,
+    output_folder: str,
+    animation_filename: str,
+) -> None:
+    ffmpeg_path = shutil.which("ffmpeg")
+    if ffmpeg_path is None:
+        raise RuntimeError(
+            "--hold-first-frame requires ffmpeg to encode the held-frame movie."
+        )
+
+    hold_frame_count = max(1, int(round(hold_seconds * fps)))
+
+    with tempfile.TemporaryDirectory(
+        prefix=f".{animation_filename}_frames_",
+        dir=output_folder,
+    ) as tmp_dir:
+        source_dir = os.path.join(tmp_dir, "source")
+        expanded_dir = os.path.join(tmp_dir, "expanded")
+        os.makedirs(source_dir, exist_ok=True)
+        os.makedirs(expanded_dir, exist_ok=True)
+
+        pv.SaveAnimation(
+            os.path.join(source_dir, "frame.png"),
+            export_view,
+            ImageResolution=image_size,
+            FrameRate=fps,
+            FrameWindow=frame_window,
+        )
+
+        source_frames = _frame_paths(source_dir)
+        if not source_frames:
+            raise RuntimeError("ParaView did not write any PNG frames.")
+
+        output_index = 0
+        for _ in range(hold_frame_count):
+            _link_or_copy(
+                source_frames[0],
+                os.path.join(expanded_dir, f"frame_{output_index:06d}.png"),
+            )
+            output_index += 1
+
+        for frame_path in source_frames[1:]:
+            _link_or_copy(
+                frame_path,
+                os.path.join(expanded_dir, f"frame_{output_index:06d}.png"),
+            )
+            output_index += 1
+
+        cmd = [
+            ffmpeg_path,
+            "-y",
+            "-loglevel",
+            "error",
+            "-framerate",
+            str(fps),
+            "-i",
+            os.path.join(expanded_dir, "frame_%06d.png"),
+            "-pix_fmt",
+            "yuv420p",
+            movie_path,
+        ]
+        subprocess.run(cmd, check=True)
 
 def generate_animation(
     args,
@@ -387,10 +467,23 @@ def end_cue(cue):
     pv.SetActiveView(export_view)
     frame_window = [0, max(0, len(tvalues) - 1)]
     movie_path = f"{out_base}.{movie_ext}"
-    pv.SaveAnimation(
-        movie_path,
-        export_view,
-        ImageResolution=image_size,
-        FrameRate=args.fps,
-        FrameWindow=frame_window
-    )
+    hold_first_frame = float(getattr(args, "hold_first_frame", 0.0) or 0.0)
+    if hold_first_frame > 0.0:
+        _save_animation_with_first_frame_hold(
+            movie_path=movie_path,
+            export_view=export_view,
+            image_size=image_size,
+            fps=args.fps,
+            frame_window=frame_window,
+            hold_seconds=hold_first_frame,
+            output_folder=args.output_folder,
+            animation_filename=args.animation_filename,
+        )
+    else:
+        pv.SaveAnimation(
+            movie_path,
+            export_view,
+            ImageResolution=image_size,
+            FrameRate=args.fps,
+            FrameWindow=frame_window,
+        )

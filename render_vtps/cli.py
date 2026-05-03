@@ -145,6 +145,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Frames per second for the output video.",
     )
     parser.add_argument(
+        "--hold-first-frame",
+        "--hold_first_frame",
+        dest="hold_first_frame",
+        type=float,
+        default=0.0,
+        help="Hold the first rendered frame for this many seconds before playback.",
+    )
+    parser.add_argument(
         "--collections",
         action="store_true",
         default=False,
@@ -156,6 +164,10 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.fps <= 0:
+        raise ValueError("--fps must be greater than 0")
+    if args.hold_first_frame < 0:
+        raise ValueError("--hold-first-frame must be greater than or equal to 0")
 
     time_paths: List[str] = args.time_dirs_path or ["."]
     vtp_names: List[str | None] = args.vtp_filename or [None] * len(time_paths)

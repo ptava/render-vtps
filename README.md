@@ -57,6 +57,7 @@ pvpython scripts/render_vtps.py
 | `--camera` | str | — | 9 numbers: `[pos_x,pos_y,pos_z,focal_x,focal_y,focal_z,up_x,up_y,up_z]`. |
 | `--interactive` | flag | `False` | Open a window to adjust camera and optionally choose field. |
 | `--fps` | int | `30` | Frames per second for the output movie. |
+| `--hold-first-frame` | float | `0.0` | Hold the first rendered frame for this many seconds before playback. Requires `ffmpeg`. |
 | `--collections` | flag | `False` | Write per-surface flattened time-series folders for direct use in ParaView. |
 
 Older underscore-style flags are still accepted for compatibility.
