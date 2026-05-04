@@ -49,6 +49,7 @@ pvpython scripts/render_vtps.py
 | `--background` | str | `1,1,1` | Background RGB as `r,g,b`, using values in `0-1` or `0-255`. |
 | `--field` | str | *(auto)* | Data array to color by. Falls back to the first available (POINTS or CELLS). |
 | `--range` | str | — | Fixed colormap range: `min,max` or `min:max` (example: `0,1`). |
+| `--colormap` | str | *(ParaView default)* | ParaView color map preset name, for example `Viridis (matplotlib)` or `Cool to Warm`. Alias: `--colourmap`. |
 | `--output` | str | `.` | Destination folder for the exported movie. |
 | `--name` | str | `animation` | Basename of the output movie (without extension). |
 | `--format` | str | `avi` | Movie format/extension (e.g., `avi`, `mp4`, depending on your build). |
@@ -93,7 +94,43 @@ pvpython scripts/render_vtps.py --path ./surfaces --range 0,1 --background 0.15,
 - RGB values can be given either in `0-1` or `0-255`.
 - Example: `--background 38,38,46` is also valid.
 
-### 5) Use Different Representations Per Surface
+### 5) Set a Color Map Preset
+```bash
+pvpython scripts/render_vtps.py --path ./surfaces --field p --range -50,150 --colormap "Viridis (matplotlib)"
+```
+- The preset name must match a color map installed in your ParaView build.
+- `--colourmap` is also accepted.
+- Quote preset names that contain spaces or parentheses.
+
+Common ParaView preset names include:
+
+| Preset | Typical use |
+|---|---|
+| `Cool to Warm` | Diverging values around a midpoint. |
+| `Cool to Warm (Extended)` | Diverging values with a wider color span. |
+| `Black-Body Radiation` | Sequential thermal-style data. |
+| `X Ray` | Inverted grayscale. |
+| `Grayscale` | Neutral sequential data. |
+| `Blue to Red Rainbow` | Legacy rainbow-style maps. |
+| `Red to Blue Rainbow` | Reversed legacy rainbow-style maps. |
+| `Rainbow Desaturated` | Lower-saturation rainbow-style maps. |
+| `Rainbow Uniform` | More perceptually uniform rainbow-style maps. |
+| `Viridis (matplotlib)` | Perceptually uniform sequential data. |
+| `Inferno (matplotlib)` | High-contrast sequential data. |
+| `Blue Orange (divergent)` | Diverging values with blue/orange contrast. |
+| `Cold and Hot` | Diverging cold/hot presentation. |
+| `Blue - Green - Orange` | Multi-hue sequential or diverging presentation. |
+| `Yellow - Gray - Blue` | Diverging presentation with a neutral center. |
+| `Black, Blue and White` | Sequential high-contrast data. |
+| `Gray and Red` | Highlighting high values against gray. |
+| `Linear Green (Gr4L)` | Sequential green scale. |
+| `jet` | Legacy MATLAB-style rainbow map. |
+
+Some ParaView versions use names without the `(matplotlib)` suffix, such as
+`Viridis`, `Inferno`, `Plasma`, and `Magma`. If a preset is not recognized,
+open ParaView's Color Map Editor preset dialog and use the exact displayed name.
+
+### 6) Use Different Representations Per Surface
 ```bash
 pvpython scripts/render_vtps.py \
   --path ./pressure_surfaces \
@@ -105,7 +142,7 @@ pvpython scripts/render_vtps.py \
 - If you pass one `--representation`, it is reused for all surfaces.
 - If you pass more than one `--representation`, the count must match the number of `--path` arguments.
 
-### 6) Load Multiple STL Geometries
+### 7) Load Multiple STL Geometries
 ```bash
 pvpython scripts/render_vtps.py \
   --path ./surfaces \
@@ -115,7 +152,7 @@ pvpython scripts/render_vtps.py \
 ```
 - STL geometries are added as solid `Surface` displays.
 
-### 7) Write Surface Collections
+### 8) Write Surface Collections
 ```bash
 pvpython scripts/render_vtps.py \
   --path ./surfaces \

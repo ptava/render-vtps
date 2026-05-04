@@ -74,7 +74,12 @@ def pv_visualize(
                 print("No fields available for visualization.")
 
         if name is not None:
-            apply_coloring(display, assoc, name)  # type: ignore[arg-type]
+            apply_coloring(
+                display,
+                assoc,
+                name,
+                getattr(args, "colormap", None),
+            )  # type: ignore[arg-type]
         else:
             try:
                 pv.ColorBy(display, None)

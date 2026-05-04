@@ -66,6 +66,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Fixed colormap range as 'min,max' or 'min:max' (e.g., 0,1).",
     )
     parser.add_argument(
+        "--colormap",
+        "--colourmap",
+        dest="colormap",
+        type=str,
+        default=None,
+        help=(
+            "ParaView color map preset name to apply "
+            "(e.g., 'Viridis (matplotlib)' or 'Cool to Warm')."
+        ),
+    )
+    parser.add_argument(
         "--time-location",
         "--time_location",
         dest="time_location",
@@ -194,13 +205,18 @@ def main(argv: list[str] | None = None) -> None:
     captured_camera: Dict | None = None
     if args.interactive_mode and readers:
         camera_position, camera_focal_point, camera_view_up, selected = \
-            interactive_camera_setup(readers[0], render_view, displays[0])
+            interactive_camera_setup(
+                readers[0],
+                render_view,
+                displays[0],
+                args.colormap,
+            )
         if selected:
             args.field = selected
             pt, cl = discover_arrays(readers[0])
             assoc = "POINTS" if selected in pt else "CELLS"
             for disp in displays:
-                apply_coloring(disp, assoc, selected)
+                apply_coloring(disp, assoc, selected, args.colormap)
         captured_camera = {
             "CameraPosition": camera_position,
             "CameraFocalPoint": camera_focal_point,

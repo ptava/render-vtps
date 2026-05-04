@@ -12,6 +12,7 @@ from typing import Dict, List, Optional, Tuple
 
 import paraview.simple as pv
 
+from .pv_helpers import apply_colormap_preset
 from .utils import (
     apply_background_color,
     apply_foreground_color,
@@ -332,6 +333,7 @@ def generate_animation(
             pv.ColorBy(disp, (assoc, field))
         lut = pv.GetColorTransferFunction(field)
         pwf = pv.GetOpacityTransferFunction(field)
+        apply_colormap_preset(lut, getattr(args, "colormap", None))
         export_displays[0].SetScalarBarVisibility(export_view, True)
         sb = pv.GetScalarBar(lut, export_view)
         sb.Title = field

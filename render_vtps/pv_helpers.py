@@ -58,11 +58,25 @@ def discover_arrays(reader) -> Tuple[List[str], List[str]]:
     return _names(pdi), _names(cdi)
 
 
-def apply_coloring(display, assoc: str, name: str) -> None:
+def apply_colormap_preset(lut, preset: str | None) -> None:
+    """Apply a ParaView color transfer function preset, if requested."""
+    if not preset:
+        return
+    try:
+        applied = lut.ApplyPreset(preset, True)
+    except Exception as exc:  # noqa: BLE001
+        raise ValueError(f"Could not apply colormap preset '{preset}': {exc}") from exc
+    if applied is False:
+        raise ValueError(f"Unknown ParaView colormap preset: '{preset}'")
+
+
+def apply_coloring(display, assoc: str, name: str, colormap: str | None = None) -> None:
     """Color *display* by (assoc, name) and rescale TFs to data range."""
     ColorBy(display, (assoc, name))
     display.RescaleTransferFunctionToDataRange(True, False)
-    GetColorTransferFunction(name).RescaleTransferFunctionToDataRange(True)
+    lut = GetColorTransferFunction(name)
+    apply_colormap_preset(lut, colormap)
+    lut.RescaleTransferFunctionToDataRange(True)
     GetOpacityTransferFunction(name).RescaleTransferFunctionToDataRange(True)
 
 # @contextmanager

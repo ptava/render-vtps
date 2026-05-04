@@ -33,7 +33,12 @@ def _install_interactive_shortcuts(render_view) -> None:
         pass
 
 
-def interactive_camera_setup(reader, render_view, display) -> Tuple[tuple, tuple, tuple, str | None]:
+def interactive_camera_setup(
+    reader,
+    render_view,
+    display,
+    colormap: str | None = None,
+) -> Tuple[tuple, tuple, tuple, str | None]:
     """Enter interactive mode; allow field selection and return final camera."""
     print("Entering interactive mode. Adjust camera, then close the window to continue.")
     print(
@@ -70,7 +75,7 @@ def interactive_camera_setup(reader, render_view, display) -> Tuple[tuple, tuple
                 idx = int(field_choice)
                 if 0 <= idx < len(choices):
                     a, n = choices[idx]
-                    apply_coloring(display, a, n)
+                    apply_coloring(display, a, n, colormap)
                     selected = n
                     print(f"Selected field: {n} [{a}]")
                 else:
